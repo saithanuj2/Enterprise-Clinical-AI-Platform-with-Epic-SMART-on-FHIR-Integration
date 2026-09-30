@@ -91,7 +91,14 @@ def test_operational_artifacts_are_exposed_through_versioned_endpoints(monkeypat
     assert all(result["status"] == "PASS" for result in quality.json())
 
 
-def test_epic_status_is_safe_when_integration_is_disabled():
+def test_epic_status_is_safe_when_integration_is_disabled(monkeypatch):
+    settings = SimpleNamespace(
+        epic_smart_enabled=False,
+        epic_client_id=None,
+        epic_state_encryption_key=None,
+        epic_fhir_base_url="https://fhir.example.test/r4",
+    )
+    monkeypatch.setattr(api_module, "get_settings", lambda: settings)
     response = client.get("/api/v1/integrations/epic/status")
 
     assert response.status_code == 200
