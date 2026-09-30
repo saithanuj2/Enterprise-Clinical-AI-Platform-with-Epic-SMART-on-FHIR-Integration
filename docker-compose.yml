@@ -242,9 +242,6 @@ services:
       - sleep infinity
 
     environment:
-      SPARK_HOME: /opt/spark
-      PATH: "/opt/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
       PYSPARK_PYTHON: python3
       PYSPARK_DRIVER_PYTHON: python3
       POSTGRES_DB: ${POSTGRES_DB}

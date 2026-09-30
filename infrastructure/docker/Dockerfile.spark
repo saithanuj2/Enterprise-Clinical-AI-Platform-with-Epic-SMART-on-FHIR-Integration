@@ -1,31 +1,28 @@
-FROM apache/spark:3.5.7-python3
+FROM python:3.12-slim
 
-USER root
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYSPARK_PYTHON=python3 \
+    PYSPARK_DRIVER_PYTHON=python3
 
 # Native dependencies required by confluent-kafka.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        openjdk-17-jre-headless \
         librdkafka-dev \
         gcc \
         g++ \
-        python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install the project from its declared dependency metadata. Keeping a second
-# hand-maintained dependency list in this Dockerfile caused environment drift.
-COPY pyproject.toml /tmp/mednexus-build/pyproject.toml
-COPY src /tmp/mednexus-build/src
-
-RUN python3 -m pip install --no-cache-dir \
-    --upgrade pip setuptools wheel && \
-    python3 -m pip install --no-cache-dir '/tmp/mednexus-build[spark]' && \
-    rm -rf /tmp/mednexus-build
-
-ENV SPARK_HOME=/opt/spark
-ENV PATH="/opt/spark/bin:${PATH}"
-ENV PYSPARK_PYTHON=python3
-ENV PYSPARK_DRIVER_PYTHON=python3
+RUN groupadd --system spark && useradd --system --gid spark --home /opt/mednexus spark
 
 WORKDIR /opt/mednexus
+
+COPY pyproject.toml ./
+COPY src ./src
+
+RUN python -m pip install --no-cache-dir \
+    --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir '.[spark]'
 
 USER spark
