@@ -1,0 +1,355 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mednexus-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "55432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - mednexus-network
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: mednexus-redis
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - mednexus-network
+
+
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: mednexus-kafka
+    restart: unless-stopped
+
+    ports:
+      - "9094:9094"
+
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 40s
+
+    networks:
+      - mednexus-network
+
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: mednexus-kafka-ui
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    ports:
+      # Port 8080 is commonly occupied by local database/web tooling on Windows.
+      - "8081:8080"
+
+    environment:
+      KAFKA_CLUSTERS_0_NAME: mednexus-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+    networks:
+      - mednexus-network
+
+
+  minio:
+    image: minio/minio:latest
+    container_name: mednexus-minio
+    restart: unless-stopped
+
+    command: server /data --console-address ":9001"
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - minio_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:9000/minio/health/live"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+    networks:
+      - mednexus-network
+
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.mlflow
+
+    image: mednexus-mlflow:2.17.2
+    container_name: mednexus-mlflow
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    command: >
+      mlflow server
+      --backend-store-uri postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      --default-artifact-root /mlartifacts
+      --host 0.0.0.0
+      --port 5000
+
+    ports:
+      - "5000:5000"
+
+    volumes:
+      - mlflow_artifacts:/mlartifacts
+
+    networks:
+      - mednexus-network
+
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mednexus-prometheus
+    restart: unless-stopped
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+    networks:
+      - mednexus-network
+
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mednexus-grafana
+    restart: unless-stopped
+
+    depends_on:
+      - prometheus
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+    networks:
+      - mednexus-network
+
+
+  spark:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.spark
+
+    image: mednexus-spark:3.5.7
+    container_name: mednexus-spark
+    restart: unless-stopped
+
+    working_dir: /opt/mednexus
+
+    command:
+      - /bin/bash
+      - -c
+      - sleep infinity
+
+    environment:
+      SPARK_HOME: /opt/spark
+      PATH: "/opt/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+      PYSPARK_PYTHON: python3
+      PYSPARK_DRIVER_PYTHON: python3
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+
+      ENVIRONMENT: docker
+      LOG_LEVEL: INFO
+
+    volumes:
+      - ./:/opt/mednexus
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+      kafka:
+        condition: service_healthy
+
+    networks:
+      - mednexus-network
+
+  ml-api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+    image: mednexus-api:0.1.0
+    container_name: mednexus-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      EPIC_SMART_ENABLED: ${EPIC_SMART_ENABLED:-false}
+      EPIC_FHIR_BASE_URL: ${EPIC_FHIR_BASE_URL:-https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4}
+      EPIC_CLIENT_ID: ${EPIC_CLIENT_ID:-}
+      EPIC_REDIRECT_URI: ${EPIC_REDIRECT_URI:-http://localhost:8000/api/v1/integrations/epic/callback}
+      EPIC_SMART_SCOPES: ${EPIC_SMART_SCOPES:-openid fhirUser launch/patient patient/Patient.rs patient/Encounter.rs patient/Observation.rs offline_access}
+      EPIC_STATE_ENCRYPTION_KEY: ${EPIC_STATE_ENCRYPTION_KEY:-}
+      EPIC_SESSION_TTL_SECONDS: ${EPIC_SESSION_TTL_SECONDS:-3600}
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:5173}
+    volumes:
+      - ./data:/app/data:ro
+      - ./artifacts:/app/artifacts:ro
+      - ./mlruns:/app/mlruns:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mednexus-network
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+    image: mednexus-web:0.1.0
+    container_name: mednexus-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      ml-api:
+        condition: service_healthy
+    networks:
+      - mednexus-network
+
+
+networks:
+  mednexus-network:
+    name: mednexus-network
+    driver: bridge
+
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  minio_data:
+  mlflow_artifacts:
+  grafana_data:

@@ -1,0 +1,90 @@
+datasets:
+
+  patients:
+    source_file: patients.csv.gz
+    source_module: hosp
+    format: csv
+    bronze_path: data/bronze/patients
+    primary_keys:
+      - subject_id
+    required_columns:
+      - subject_id
+      - gender
+      - anchor_age
+      - anchor_year
+    partition_columns: []
+
+  admissions:
+    source_file: admissions.csv.gz
+    source_module: hosp
+    format: csv
+    bronze_path: data/bronze/admissions
+    primary_keys:
+      - hadm_id
+    required_columns:
+      - subject_id
+      - hadm_id
+      - admittime
+      - dischtime
+      - admission_type
+    partition_columns: []
+
+  diagnoses_icd:
+    source_file: diagnoses_icd.csv.gz
+    source_module: hosp
+    format: csv
+    bronze_path: data/bronze/diagnoses_icd
+    primary_keys:
+      - subject_id
+      - hadm_id
+      - seq_num
+    required_columns:
+      - subject_id
+      - hadm_id
+      - icd_code
+      - icd_version
+    partition_columns: []
+
+  procedures_icd:
+    source_file: procedures_icd.csv.gz
+    source_module: hosp
+    format: csv
+    bronze_path: data/bronze/procedures_icd
+    primary_keys:
+      - subject_id
+      - hadm_id
+      - seq_num
+    required_columns:
+      - subject_id
+      - hadm_id
+      - icd_code
+    partition_columns: []
+
+  labevents:
+    source_file: labevents.csv.gz
+    source_module: hosp
+    format: csv
+    bronze_path: data/bronze/labevents
+    primary_keys:
+      - labevent_id
+    required_columns:
+      - subject_id
+      - labevent_id
+      - itemid
+      - charttime
+    partition_columns: []
+
+  prescriptions:
+    source_file: prescriptions.csv.gz
+    source_module: hosp
+    format: csv
+    bronze_path: data/bronze/prescriptions
+    primary_keys:
+      - subject_id
+      - hadm_id
+    required_columns:
+      - subject_id
+      - hadm_id
+      - starttime
+      - drug
+    partition_columns: []

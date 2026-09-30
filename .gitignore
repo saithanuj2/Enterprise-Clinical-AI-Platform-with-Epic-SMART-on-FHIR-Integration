@@ -1,0 +1,96 @@
+# Environment
+.env
+.env.local
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+work/
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+dist/
+build/
+coverage/
+.coverage
+*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+
+# Java
+target/
+
+# Go
+bin/
+*.exe
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Healthcare datasets
+data/raw/*
+data/bronze/*
+data/silver/*
+data/gold/*
+data/quarantine/*
+data/audit/*
+data/sample/*
+
+# Preserve directories
+!data/raw/.gitkeep
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+!data/quarantine/.gitkeep
+!data/audit/.gitkeep
+!data/sample/.gitkeep
+
+# ML models / artifacts
+*.pkl
+*.joblib
+*.onnx
+*.pt
+*.pth
+mlruns/
+artifacts/
+
+# FAISS
+*.faiss
+*.index
+
+# Spark
+spark-warehouse/
+metastore_db/
+.derby/
+
+# Logs
+*.log
+logs/
+
+# Secrets / certificates
+*.pem
+*.key
+*.crt
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Local Docker volumes
+docker-data/
